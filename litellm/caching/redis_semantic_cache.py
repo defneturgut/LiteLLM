@@ -238,11 +238,24 @@ class RedisSemanticCache(BaseCache):
     @classmethod
     def _get_prompt_from_kwargs(cls, **kwargs) -> str | None:
         """
-        Extract a semantic-cache prompt from chat or Responses API request kwargs.
+        Extract a semantic-cache prompt from chat, text-completion, or Responses
+        API request kwargs.
         """
         messages: Final = kwargs.get("messages")
         if messages:
             return get_str_from_messages(messages)
+
+        # /v1/completions (text-completion, atext_completion) keys the request
+        # off "prompt" instead of "messages"/"input" -- without this, semantic
+        # cache never finds text to embed for completion-mode models and
+        # similarity stays 0.0 forever (measured/confirmed).
+        prompt_field: Final = kwargs.get("prompt")
+        if isinstance(prompt_field, str) and prompt_field.strip():
+            return prompt_field.strip()
+        if isinstance(prompt_field, list) and prompt_field:
+            joined: Final = "\n".join(str(p) for p in prompt_field if isinstance(p, str)).strip()
+            if joined:
+                return joined
 
         if "input" not in kwargs:
             return None
