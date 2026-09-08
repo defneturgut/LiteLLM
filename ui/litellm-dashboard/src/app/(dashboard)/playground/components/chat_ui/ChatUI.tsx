@@ -40,6 +40,7 @@ import { makeAnthropicMessagesRequest } from "../../llm_calls/anthropic_messages
 import { makeOpenAIAudioSpeechRequest } from "../../llm_calls/audio_speech";
 import { makeOpenAIAudioTranscriptionRequest } from "../../llm_calls/audio_transcriptions";
 import { makeOpenAIChatCompletionRequest } from "@/components/llm_calls/chat_completion";
+import { makeOpenAITextCompletionRequest } from "@/components/llm_calls/text_completion";
 import { makeOpenAIEmbeddingsRequest } from "../../llm_calls/embeddings_api";
 import { Agent, fetchAvailableAgents } from "../../llm_calls/fetch_agents";
 import { fetchAvailableModels, ModelGroup } from "@/components/llm_calls/fetch_models";
@@ -622,6 +623,7 @@ const ChatUI: React.FC<ChatUIProps> = ({
     // Require model selection for all model-based endpoints (MCP direct mode does not need a model)
     const modelRequiredEndpoints = [
       EndpointType.CHAT,
+      EndpointType.COMPLETION,
       EndpointType.IMAGE,
       EndpointType.SPEECH,
       EndpointType.IMAGE_EDITS,
@@ -762,6 +764,29 @@ const ChatUI: React.FC<ChatUIProps> = ({
             handleMCPEvent,
             mockTestFallbacks,
             mcpToolsets,
+            streamingEnabled,
+          );
+        } else if (endpointType === EndpointType.COMPLETION) {
+          // Base/completion model -- single prompt string, no message history,
+          // no chat template (see text_completion.tsx for why this exists).
+          const requestProxyBaseUrl =
+            simplified && proxySettings
+              ? proxySettings.LITELLM_UI_API_DOC_BASE_URL ?? proxySettings.PROXY_BASE_URL ?? undefined
+              : customProxyBaseUrl || undefined;
+          await makeOpenAITextCompletionRequest(
+            inputMessage,
+            (chunk, model) => updateTextUI("assistant", chunk, model),
+            selectedModel,
+            effectiveApiKey,
+            selectedTags,
+            signal,
+            updateTimingData,
+            updateUsageData,
+            traceId,
+            useAdvancedParams ? temperature : undefined,
+            useAdvancedParams ? maxTokens : undefined,
+            updateTotalLatency,
+            requestProxyBaseUrl,
             streamingEnabled,
           );
         } else if (endpointType === EndpointType.IMAGE) {
@@ -1019,7 +1044,10 @@ const ChatUI: React.FC<ChatUIProps> = ({
     return !model.mode || model.mode === "chat";
   };
 
-  const supportsStreamingToggle = endpointType === EndpointType.CHAT || endpointType === EndpointType.RESPONSES;
+  const supportsStreamingToggle =
+    endpointType === EndpointType.CHAT ||
+    endpointType === EndpointType.RESPONSES ||
+    endpointType === EndpointType.COMPLETION;
 
   const antIcon = <LoadingOutlined style={{ fontSize: 24 }} spin />;
 
@@ -2063,6 +2091,8 @@ const ChatUI: React.FC<ChatUIProps> = ({
                             endpointType === EndpointType.ANTHROPIC_MESSAGES ||
                             endpointType === EndpointType.INTERACTIONS
                               ? "Type your message... (Shift+Enter for new line)"
+                              : endpointType === EndpointType.COMPLETION
+                                ? "Enter a prompt to complete... (Shift+Enter for new line)"
                               : endpointType === EndpointType.A2A_AGENTS
                                 ? "Send a message to the A2A agent..."
                                 : endpointType === EndpointType.IMAGE_EDITS

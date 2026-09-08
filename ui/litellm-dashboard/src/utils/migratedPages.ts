@@ -50,6 +50,11 @@ export const MIGRATED_PAGES: Record<string, string> = {
   users: "users",
   teams: "teams",
   organizations: "organizations",
+  // Note: routed as "perf-stats", not "metrics" -- LiteLLM's Prometheus auth
+  // middleware substring-matches "/metrics" anywhere in the path (see
+  // prometheus_auth_middleware.py), so a literal /ui/metrics route gets
+  // caught by that 401 gate. Sidebar label stays "Metrics"; only the URL differs.
+  metrics: "perf-stats",
 };
 
 function uiBase(): string {

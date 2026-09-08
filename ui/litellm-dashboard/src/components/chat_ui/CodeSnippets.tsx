@@ -154,6 +154,18 @@ print(response)
 `;
       break;
     }
+    case EndpointType.COMPLETION: {
+      // Base/completion model -- single prompt string, no messages array.
+      endpointSpecificCode = `
+response = client.completions.create(
+    model="${modelNameForCode}",
+    prompt="${safePrompt}"
+)
+
+print(response.choices[0].text)
+`;
+      break;
+    }
     case EndpointType.RESPONSES: {
       const metadataIsNotEmpty = Object.keys(metadata).length > 0;
       let extraBodyCode = "";

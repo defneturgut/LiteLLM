@@ -66,11 +66,28 @@ const classifyRequest = (request: unknown): RequestPayload => {
   if (typeof input === "string" || Array.isArray(input)) {
     return { kind: "responses", instructions: asString(request.instructions), input };
   }
+  // text-completion (/v1/completions) and image-generation (/v1/images/generations)
+  // requests both key their input off "prompt" instead of "messages"/"input".
+  if (typeof request.prompt === "string") return { kind: "completion", prompt: request.prompt };
   return { kind: "unknown" };
 };
 
 const classifyResponse = (response: unknown): ResponsePayload => {
   if (!isRecord(response)) return { kind: "unknown" };
+  if (Array.isArray(response.data) && response.data.some((item) => isRecord(item) && ("b64_json" in item || "url" in item))) {
+    const images = response.data.filter(isRecord).map((item) => ({
+      b64Json: typeof item.b64_json === "string" ? item.b64_json : undefined,
+      url: typeof item.url === "string" ? item.url : undefined,
+    }));
+    return { kind: "image", images };
+  }
+  if (Array.isArray(response.data) && response.data.some((item) => isRecord(item) && Array.isArray(item.embedding))) {
+    const dimensions = response.data.reduce((max, item) => {
+      const len = isRecord(item) && Array.isArray(item.embedding) ? item.embedding.length : 0;
+      return Math.max(max, len);
+    }, 0);
+    return { kind: "embedding", count: response.data.length, dimensions };
+  }
   if (Array.isArray(response.choices)) return { kind: "chat", choices: response.choices };
   if (Array.isArray(response.output)) return { kind: "responses", output: response.output };
   return { kind: "unknown" };
@@ -98,6 +115,8 @@ const parseRequestMessages = (payload: RequestPayload): ParsedMessage[] => {
           : payload.input.flatMap(parseResponsesInputItem);
       return [...instructions, ...input];
     }
+    case "completion":
+      return [{ role: "user", content: payload.prompt }];
     case "unknown":
       return [];
   }
@@ -107,13 +126,33 @@ const parseResponseMessage = (payload: ResponsePayload): ParsedMessage | null =>
   switch (payload.kind) {
     case "chat": {
       const choice = payload.choices[0];
-      const message = isRecord(choice) ? choice.message : undefined;
+      if (!isRecord(choice)) return null;
+      // /v1/chat/completions choices carry `.message`; /v1/completions (text
+      // completion, no chat template) choices carry `.text` directly instead.
+      if (typeof choice.text === "string") {
+        return { role: "assistant", content: choice.text };
+      }
+      const message = choice.message;
       if (!isRecord(message)) return null;
       return {
         role: toRole(message.role, "assistant"),
         content: parseMessageContent(message.content),
         toolCalls: parseChatToolCalls(message.tool_calls),
       };
+    }
+    case "embedding": {
+      const plural = payload.count === 1 ? "" : "s";
+      return {
+        role: "assistant",
+        content: `${payload.count} embedding vector${plural}, ${payload.dimensions} dimensions each`,
+      };
+    }
+    case "image": {
+      const first = payload.images[0];
+      if (!first) return null;
+      const imageDataUri = first.b64Json ? `data:image/png;base64,${first.b64Json}` : first.url;
+      if (!imageDataUri) return null;
+      return { role: "assistant", content: "", imageDataUri };
     }
     case "responses": {
       const content = payload.output

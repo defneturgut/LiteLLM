@@ -92,7 +92,16 @@ export function OutputCard({ message, completionTokens, outputCost }: OutputCard
         }}
       >
         <div style={{ padding: "12px 16px" }}>
-          <SimpleMessageBlock label="ASSISTANT" content={message.content} toolCalls={message.toolCalls} />
+          {message.imageDataUri ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={message.imageDataUri}
+              alt="Generated output"
+              style={{ maxWidth: 320, borderRadius: 6, border: "1px solid #f0f0f0" }}
+            />
+          ) : (
+            <SimpleMessageBlock label="ASSISTANT" content={message.content} toolCalls={message.toolCalls} />
+          )}
         </div>
       </div>
     </div>

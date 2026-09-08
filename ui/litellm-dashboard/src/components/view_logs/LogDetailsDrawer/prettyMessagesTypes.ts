@@ -9,16 +9,20 @@ export interface ParsedMessage {
   content: string;
   toolCalls?: ToolCall[];
   toolCallId?: string;
+  imageDataUri?: string;
 }
 
 export type RequestPayload =
   | { kind: "chat"; messages: readonly unknown[] }
   | { kind: "responses"; instructions: string; input: string | readonly unknown[] }
+  | { kind: "completion"; prompt: string }
   | { kind: "unknown" };
 
 export type ResponsePayload =
   | { kind: "chat"; choices: readonly unknown[] }
   | { kind: "responses"; output: readonly unknown[] }
+  | { kind: "image"; images: readonly { b64Json?: string; url?: string }[] }
+  | { kind: "embedding"; count: number; dimensions: number }
   | { kind: "unknown" };
 
 export interface ToolCall {

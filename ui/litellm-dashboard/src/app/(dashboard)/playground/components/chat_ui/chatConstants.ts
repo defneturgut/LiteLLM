@@ -35,6 +35,7 @@ export const OPEN_AI_VOICE_SELECT_OPTIONS = Object.entries(OPEN_AI_VOICES).map((
 
 export const ENDPOINT_OPTIONS = [
   { value: EndpointType.CHAT, label: "/v1/chat/completions" },
+  { value: EndpointType.COMPLETION, label: "/v1/completions" },
   { value: EndpointType.RESPONSES, label: "/v1/responses" },
   { value: EndpointType.ANTHROPIC_MESSAGES, label: "/v1/messages" },
   { value: EndpointType.IMAGE, label: "/v1/images/generations" },

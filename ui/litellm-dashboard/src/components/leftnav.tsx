@@ -40,6 +40,7 @@ import {
   HeartPulse,
   KeyRound,
   LayoutGrid,
+  LineChart,
   Network,
   Palette,
   PanelLeftClose,
@@ -201,6 +202,7 @@ const menuGroups: MenuGroup[] = [
         ),
       },
       { key: "logs", page: "logs", label: "Logs", icon: <Activity {...ICON} /> },
+      { key: "metrics", page: "metrics", label: "Metrics", icon: <LineChart {...ICON} /> },
       {
         key: "guardrails-monitor",
         page: "guardrails-monitor",
