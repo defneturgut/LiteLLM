@@ -1,73 +1,126 @@
+# Bu fork'un (defneturgut/litellm, personal-improvements dali) calisir hali --
+# proxy + Postgres + Redis, artı bu fork'ta yapilan Admin UI ozellestirmeleri
+# (bkz. ui/litellm-dashboard commit gecmisi) ve semantic cache duzeltmesi
+# (bkz. litellm/caching/redis_semantic_cache.py commit gecmisi).
+#
+# NOT: litellm servisi resmi, onceden derlenmis LiteLLM imajini kullanir --
+# bu fork'un TAM kaynagini (Python/Rust backend dahil) Docker ile derlemek,
+# su anki Wolfi paket deposundaki bir surum uyumsuzlugu yuzunden basarisiz
+# oluyor (rust paketinin cektigi libLLVM, Wolfi'de henuz yayinlanmamis bir
+# glibc surumu istiyor, ustune bu projenin Rust bagimliliklari da o glibc'yle
+# uyumlu en eski rustc'nin destekledigi surumden daha yenisini istiyor). Bu
+# yuzden Admin UI'i (sadece Node.js gerektiren, Rust'a hic dokunmayan kisim)
+# bu fork'un kendi kaynagindan ayrica derleyip (bkz. asagidaki "Admin UI'i
+# Yeniden Derleme" notu) resmi imajin uzerine mount ediyoruz; guardrail ve
+# semantic-cache duzeltmesi de fork'un kendi agacindaki gercek dosyalar
+# olarak (kopya degil) mount ediliyor.
+#
+# Kurulum: once .env.example dosyasini .env olarak kopyala ve icindeki
+# degerleri kendine gore duzenle.
+#
+# Baslat:  docker compose up -d
+# Loglar:  docker compose logs -f litellm
+# Durdur:  docker compose down          (verileri silmek icin: down -v)
+
 services:
   litellm:
-    build:
-      context: .
-      args:
-        target: runtime
-    image: docker.litellm.ai/berriai/litellm:main-stable
-    #########################################
-    ## Uncomment these lines to start proxy with a config.yaml file ##
-    # volumes:
-    #  - ./config.yaml:/app/config.yaml
-    # command:
-    #  - "--config=/app/config.yaml"
-    ##############################################
+    # Bu ozellestirmelerin gelistirildigi/test edildigi bilgisayardaki
+    # surumle BIREBIR ayni imaj (digest'e sabitlendi). Upstream'in en
+    # guncelini takip etmek istersen bu satiri
+    # "ghcr.io/berriai/litellm:main-stable" ile degistir.
+    image: ghcr.io/berriai/litellm@sha256:468c25f35f3e5ec4e414974f00deab93337b1b4d9953cabcfd3722e59415f834
+    container_name: litellm-proxy
     ports:
-      - "4000:4000" # Map the container port to the host, change the host port if necessary
+      - "4000:4000"
+    volumes:
+      - ./config:/app/config:ro
+      # Bu fork'un semantic cache duzeltmesi -- LiteLLM'in resmi
+      # RedisSemanticCache._get_prompt_from_kwargs fonksiyonu SADECE
+      # "messages" (chat) ve "input" (Responses API) alanlarini okuyor,
+      # "prompt" (text-completion) alanini hic okumuyordu; bu fork'ta
+      # duzeltildi (bkz. litellm/caching/redis_semantic_cache.py commit
+      # gecmisi). Resmi imaj bu duzeltmeyi icermedigi icin, fork agacindaki
+      # GERCEK dosyayi (kopya degil) mount ediyoruz.
+      - ./litellm/caching/redis_semantic_cache.py:/app/.venv/lib/python3.13/site-packages/litellm/caching/redis_semantic_cache.py:ro
+      # Bu fork'un Admin UI ozellestirmeleri -- Metrics sekmesi,
+      # Playground'da completion modeli destegi, Log Viewer'da
+      # goruntu/embedding isteklerinin duzgun gosterilmesi (bkz.
+      # ui/litellm-dashboard commit gecmisi). ui-build/out/, o kaynaktan
+      # `docker build --target ui-builder` ile derlendi (bkz. asagi).
+      - ./ui-build/out:/app/.venv/lib/python3.13/site-packages/litellm/proxy/_experimental/out:ro
+    command: ["--config", "/app/config/config.yaml", "--port", "4000", "--num_workers", "1"]
     environment:
-      DATABASE_URL: "postgresql://llmproxy:dbpassword9090@db:5432/litellm"
-      # Optional: route read-only queries (find_*, count, group_by, query_raw/_first)
-      # to a separate reader endpoint, e.g. an Aurora reader. Leave unset for
-      # single-DB deployments. With IAM_TOKEN_DB_AUTH enabled, the reader URL
-      # is auto-refreshed alongside the writer.
-      # DATABASE_URL_READ_REPLICA: "postgresql://llmproxy:dbpassword9090@db-reader:5432/litellm"
-      STORE_MODEL_IN_DB: "True" # allows adding models to proxy via UI
-    env_file:
-      - .env # Load local .env file
+      # --- Guvenlik (degerler .env dosyasindan gelir, bkz. .env.example) ---
+      LITELLM_MASTER_KEY: "${LITELLM_MASTER_KEY:?LITELLM_MASTER_KEY .env dosyasinda tanimli olmali}"
+      LITELLM_SALT_KEY: "${LITELLM_SALT_KEY:?LITELLM_SALT_KEY .env dosyasinda tanimli olmali}"
+      DISARIDAKI_MODEL_API_KEY: "${DISARIDAKI_MODEL_API_KEY:-}"
+      # --- Veritabani (sanal anahtar + harcama takibi + UI icin ZORUNLU) ---
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-litellm}:${POSTGRES_PASSWORD:-litellm}@db:5432/${POSTGRES_DB:-litellm}"
+      STORE_MODEL_IN_DB: "True"                   # UI'dan model ekleyip kaydedebilmek icin
+      STORE_PROMPTS_IN_SPEND_LOGS: "True"         # prompt+cevap metnini DB'ye yaz (UI > Logs)
+      # Varsayilan limit kucuk (~1000-2000 karakter) -- goruntu uretme gibi
+      # buyuk base64 ciktilari kesiyor. Log Viewer'in TAM goruntuyu
+      # DB'den cekebilmesi icin yukselttik.
+      MAX_STRING_LENGTH_PROMPT_IN_DB: "2000000"
+      # --- Cache / dagitik state ---
+      REDIS_HOST: "redis"
+      REDIS_PORT: "6379"
+      # --- Admin UI girisi ---
+      UI_USERNAME: "${UI_USERNAME:-admin}"
+      UI_PASSWORD: "${UI_PASSWORD:?UI_PASSWORD .env dosyasinda tanimli olmali}"
+      LITELLM_LOG: "INFO"
+      # --- Alerting (general_settings.alerting: ["webhook"], config.yaml) ---
+      # Butce/hata uyarilarinin POST edilecegi adres. Kendi webhook alicin
+      # yoksa bos birakabilirsin -- LiteLLM sadece gonderim basarisiz olursa
+      # loglar, cekirdek islevi etkilemez.
+      WEBHOOK_URL: "${WEBHOOK_URL:-}"
+    extra_hosts:
+      # config.yaml'daki "disaridaki-model-denemesi" gibi host'ta calisan
+      # kendi model sunucularina container icinden erisebilmek icin.
+      - "host.docker.internal:host-gateway"
     depends_on:
-      - db  # Indicates that this service depends on the 'db' service, ensuring 'db' starts first
-    healthcheck:  # Defines the health check configuration for the container
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    healthcheck:
       test:
         - CMD-SHELL
-        - python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness')"  # Command to execute for health check
-      interval: 30s  # Perform health check every 30 seconds
-      timeout: 10s   # Health check command times out after 10 seconds
-      retries: 3     # Retry up to 3 times if health check fails
-      start_period: 40s  # Wait 40 seconds after container start before beginning health checks
+        - python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness')"
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
 
   db:
-    image: postgres:16
-    restart: always
-    container_name: litellm_db
+    image: postgres:16-alpine
+    container_name: litellm-postgres
     environment:
-      POSTGRES_DB: litellm
-      POSTGRES_USER: llmproxy
-      POSTGRES_PASSWORD: dbpassword9090
+      POSTGRES_USER: "${POSTGRES_USER:-litellm}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-litellm}"
+      POSTGRES_DB: "${POSTGRES_DB:-litellm}"
     ports:
-      - "5432:5432"
+      - "5433:5432"        # host'tan psql ile bakmak istersen: localhost:5433
     volumes:
-      - postgres_data:/var/lib/postgresql/data # Persists Postgres data across container restarts
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -d litellm -U llmproxy"]
-      interval: 1s
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-litellm} -d ${POSTGRES_DB:-litellm}"]
+      interval: 5s
       timeout: 5s
-      retries: 10
+      retries: 20
+    restart: unless-stopped
 
-  prometheus:
-    image: prom/prometheus
-    volumes:
-      - prometheus_data:/prometheus
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+  # redis-stack-server: normal Redis + RediSearch modulu (vektor arama).
+  # Semantic cache (redisvl uzerinden) FT.CREATE/FT.SEARCH kullaniyor --
+  # duz redis:7-alpine'de bu komutlar yok.
+  redis:
+    image: redis/redis-stack-server:latest
+    container_name: litellm-redis
     ports:
-      - "9090:9090"
-    command:
-      - "--config.file=/etc/prometheus/prometheus.yml"
-      - "--storage.tsdb.path=/prometheus"
-      - "--storage.tsdb.retention.time=15d"
-    restart: always
+      - "6380:6379"
+    restart: unless-stopped
 
 volumes:
-  prometheus_data:
-    driver: local
   postgres_data:
-    name: litellm_postgres_data # Named volume for Postgres data persistence
+    name: litellm_postgres_data
