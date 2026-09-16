@@ -17,9 +17,12 @@
 # olarak (kopya degil) mount ediliyor.
 #
 # Kurulum: once .env.example dosyasini .env olarak kopyala ve icindeki
-# degerleri kendine gore duzenle.
+# degerleri kendine gore duzenle. SONRA -- ONEMLI -- Admin UI'i derle
+# (asagidaki "Admin UI'i Derleme" notuna bak) -- ui-build/out/ depoya dahil
+# DEGIL (git'e derlenmis cikti eklemekten kacinmak icin), yoksa asagidaki
+# mount BOS bir klasoru Admin UI'nin uzerine biner ve Admin UI hic acilmaz.
 #
-# Baslat:  docker compose up -d
+# Baslat:  docker compose up -d     (Admin UI'i derledikten SONRA calistir)
 # Loglar:  docker compose logs -f litellm
 # Durdur:  docker compose down          (verileri silmek icin: down -v)
 
@@ -50,8 +53,10 @@ services:
       # Bu fork'un Admin UI ozellestirmeleri -- Metrics sekmesi,
       # Playground'da completion modeli destegi, Log Viewer'da
       # goruntu/embedding isteklerinin duzgun gosterilmesi (bkz.
-      # ui/litellm-dashboard commit gecmisi). ui-build/out/, o kaynaktan
-      # `docker build --target ui-builder` ile derlendi (bkz. asagi).
+      # ui/litellm-dashboard commit gecmisi). ui-build/out/ depoya dahil
+      # DEGIL -- ilk calistirmadan once `docker build --target ui-builder`
+      # ile derlemen GEREKIYOR, yoksa bu mount bos bir klasoru Admin UI'nin
+      # uzerine biner ve Admin UI hic acilmaz. Tam komutlar: personal-improvements/README.md
       - ./ui-build/out:/app/.venv/lib/python3.13/site-packages/litellm/proxy/_experimental/out:ro
     command: ["--config", "/app/config/config.yaml", "--port", "4000", "--num_workers", "1"]
     environment:

@@ -21,14 +21,29 @@ git diff v1.97.0 -- ui/litellm-dashboard/src
 
 The repo root's `docker-compose.yml` runs this fork (proxy + Postgres + Redis)
 with all three customizations already wired in — see the top-level
-`.env.example` and the comments in `docker-compose.yml`. In short:
+`.env.example` and the comments in `docker-compose.yml`.
+
+**Build the Admin UI first — this is a required step, not optional.**
+`ui-build/out/` is *not* committed to the repo (avoiding a compiled build
+artifact in git), so `docker-compose.yml`'s volume mount has nothing to mount
+until you build it once. Skip this and run `docker compose up -d` first, and
+Docker bind-mounts an empty host directory over the official image's Admin UI
+path — the UI won't load at all.
 
 ```bash
+# 1) Build the Admin UI from this fork's own ui/litellm-dashboard source.
+#    Pure Node.js -- the `ui-builder` Dockerfile stage never touches
+#    Python or Rust, so it's unaffected by the backend build issue below.
+docker build --target ui-builder -t litellm-fork-ui-build .
+docker create --name tmp-ui litellm-fork-ui-build
+docker cp tmp-ui:/ui/out ./ui-build/out
+docker rm tmp-ui
+
+# 2) Ordinary setup
 cp .env.example .env    # fill in the values
 docker compose up -d
 python3 metrics/dashboard.py   # powers the Metrics tab, localhost:8093
 ```
 
-The Admin UI mount (`ui-build/out/`, built from this fork's own
-`ui/litellm-dashboard` source) needs rebuilding after you change that source —
-see the "Admin UI'i Yeniden Derleme" note in `docker-compose.yml`.
+Re-run step 1 any time you change `ui/litellm-dashboard` source, then
+`docker compose restart litellm` to pick it up.
