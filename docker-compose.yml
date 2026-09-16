@@ -1,5 +1,6 @@
 # Bu fork'un (defneturgut/litellm, personal-improvements dali) calisir hali --
-# proxy + Postgres + Redis, artı bu fork'ta yapilan Admin UI ozellestirmeleri
+# proxy + Postgres + Redis + alerting'i canli gostermek icin bir webhook
+# alicisi, artı bu fork'ta yapilan Admin UI ozellestirmeleri
 # (bkz. ui/litellm-dashboard commit gecmisi) ve semantic cache duzeltmesi
 # (bkz. litellm/caching/redis_semantic_cache.py commit gecmisi).
 #
@@ -70,10 +71,10 @@ services:
       UI_PASSWORD: "${UI_PASSWORD:?UI_PASSWORD .env dosyasinda tanimli olmali}"
       LITELLM_LOG: "INFO"
       # --- Alerting (general_settings.alerting: ["webhook"], config.yaml) ---
-      # Butce/hata uyarilarinin POST edilecegi adres. Kendi webhook alicin
-      # yoksa bos birakabilirsin -- LiteLLM sadece gonderim basarisiz olursa
-      # loglar, cekirdek islevi etkilemez.
-      WEBHOOK_URL: "${WEBHOOK_URL:-}"
+      # Butce/hata uyarilarinin POST edilecegi adres. Varsayilan olarak asagidaki
+      # webhook-alici servisine gider (alerting'in gercekten calistigini canli
+      # gormek icin) -- kendi webhook alicin varsa .env'de degistir.
+      WEBHOOK_URL: "${WEBHOOK_URL:-http://webhook-alici:8080/webhook}"
     extra_hosts:
       # config.yaml'daki "disaridaki-model-denemesi" gibi host'ta calisan
       # kendi model sunucularina container icinden erisebilmek icin.
@@ -82,6 +83,8 @@ services:
       db:
         condition: service_healthy
       redis:
+        condition: service_started
+      webhook-alici:
         condition: service_started
     healthcheck:
       test:
@@ -119,6 +122,19 @@ services:
     container_name: litellm-redis
     ports:
       - "6380:6379"
+    restart: unless-stopped
+
+  # Alerting'i canli gormek icin kendi minik webhook alicimiz -- gercek bir
+  # Slack/Discord workspace'e ihtiyac yok. LiteLLM'in attigi ham JSON'u
+  # ekrana basar. Bagimlilik yok (stdlib), python:3-alpine yeterli.
+  webhook-alici:
+    image: python:3.13-alpine
+    container_name: litellm-webhook-alici
+    command: ["python3", "/app/sunucu.py"]
+    volumes:
+      - ./webhook-alici:/app:ro
+    ports:
+      - "8085:8080"
     restart: unless-stopped
 
 volumes:
