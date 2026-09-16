@@ -25,11 +25,15 @@
 
 services:
   litellm:
-    # Bu ozellestirmelerin gelistirildigi/test edildigi bilgisayardaki
-    # surumle BIREBIR ayni imaj (digest'e sabitlendi). Upstream'in en
-    # guncelini takip etmek istersen bu satiri
-    # "ghcr.io/berriai/litellm:main-stable" ile degistir.
-    image: ghcr.io/berriai/litellm@sha256:468c25f35f3e5ec4e414974f00deab93337b1b4d9953cabcfd3722e59415f834
+    # Bilincli olarak hareketli (floating) bir etikete birakildi -- "docker
+    # compose pull && docker compose up -d" her calistirildiginda upstream'in
+    # o anki en guncel surumu cekilir (guvenlik yamalari, yeni ozellikler
+    # otomatik gelir). Bu ozellestirmelerin gelistirildigi/test edildigi
+    # surum: litellm 1.97.0 (bkz. README/commit gecmisi) -- birebir o surume
+    # sabitlemek istersen bu satiri
+    # "ghcr.io/berriai/litellm@sha256:468c25f35f3e5ec4e414974f00deab93337b1b4d9953cabcfd3722e59415f834"
+    # ile degistir.
+    image: ghcr.io/berriai/litellm:main-stable
     container_name: litellm-proxy
     ports:
       - "4000:4000"
